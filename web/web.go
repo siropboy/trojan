@@ -5,7 +5,6 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/gobuffalo/packr/v2"
-	"github.com/robfig/cron/v3"
 	"net/http"
 	"strconv"
 	"trojan/core"
@@ -18,11 +17,7 @@ func userRouter(router *gin.Engine) {
 	{
 		user.GET("", func(c *gin.Context) {
 			requestUser := RequestUsername(c)
-			if requestUser == "admin" {
-				c.JSON(200, controller.UserList(""))
-			} else {
-				c.JSON(200, controller.UserList(requestUser))
-			}
+			c.JSON(200, controller.UserList(requestUser))
 		})
 		user.GET("/page", func(c *gin.Context) {
 			curPageStr := c.DefaultQuery("curPage", "1")
@@ -51,7 +46,7 @@ func userRouter(router *gin.Engine) {
 			c.JSON(200, controller.SetExpire(uint(id), uint(useDays)))
 		})
 		user.DELETE("/expire", func(c *gin.Context) {
-			sid := c.PostForm("id")
+			sid := c.Query("id")
 			id, _ := strconv.Atoi(sid)
 			c.JSON(200, controller.CancelExpire(uint(id)))
 		})
@@ -111,6 +106,14 @@ func dataRouter(router *gin.Engine) {
 			id, _ := strconv.Atoi(sID)
 			c.JSON(200, controller.CleanData(uint(id)))
 		})
+		data.POST("/resetDay", func(c *gin.Context) {
+			dayStr := c.DefaultPostForm("day", "1")
+			day, _ := strconv.Atoi(dayStr)
+			c.JSON(200, controller.UpdateResetDay(uint(day)))
+		})
+		data.GET("/resetDay", func(c *gin.Context) {
+			c.JSON(200, controller.GetResetDay())
+		})
 	}
 }
 
@@ -140,19 +143,6 @@ func staticRouter(router *gin.Engine) {
 	})
 }
 
-func sheduleTask() {
-	c := cron.New()
-	c.AddFunc("CRON_TZ=Asia/Shanghai @monthly", func() {
-		mysql := core.GetMysql()
-		mysql.MonthlyResetData()
-	})
-	c.AddFunc("CRON_TZ=Asia/Shanghai @daily", func() {
-		mysql := core.GetMysql()
-		mysql.DailyCheckExpire()
-	})
-	c.Start()
-}
-
 // Start web启动入口
 func Start(host string, port int, isSSL bool) {
 	router := gin.Default()
@@ -163,7 +153,8 @@ func Start(host string, port int, isSSL bool) {
 	userRouter(router)
 	dataRouter(router)
 	commonRouter(router)
-	sheduleTask()
+	controller.SheduleTask()
+	controller.CollectTask()
 	util.OpenPort(port)
 	if isSSL {
 		config := core.Load("")
